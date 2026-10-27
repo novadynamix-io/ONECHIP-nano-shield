@@ -163,7 +163,7 @@ uint8_t Move::speedToPWM(uint8_t s) {
   }
 
   // Battery feature OFF: same as before
-  return map(s, 0, 100, 22, 225);
+  return map(s, 0, 100, 22, 255);
 }
 
 void Move::setLeft(int speed) {
