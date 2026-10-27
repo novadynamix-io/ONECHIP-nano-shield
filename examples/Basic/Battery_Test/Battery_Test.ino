@@ -2,82 +2,45 @@
 
 OnechipNanoShield nova;
 
-// ===== TEST PLAN: motor speed 100 -> 50 -> 10, 5 seconds each, then repeat =====
-const int speeds[3] = {100, 50, 10};
-const unsigned long STEP_TIME = 5000;    // 5 seconds for each speed
-
-int step = 0;
-unsigned long stepStart = 0;
+float calibration = 1.0;        // starts at 1.0, the calibration step below fixes it
 unsigned long lastPrint = 0;
 
 void setup() {
-  Serial.begin(9600);                    // the library never starts Serial, you do it here
+  Serial.begin(9600);
   nova.setup();
 
-  // ---------- 1) nova.battery.setup(...) ----------
-  // nova.battery.setup(warningV, lowV, batPin, ledPin, enabled, calibration);
-  //
-  //   warningV    : 7.4  -> LED flashes normally at or below this voltage
-  //   lowV        : 7.0  -> LED flashes fast at or below this voltage
-  //                         and speed 100 = 7.0V (motor runs 0V to 7.0V)
-  //   batPin      : A7   -> pin that reads the battery
-  //   ledPin      : 13   -> LED used for the warning
-  //   enabled     : true -> battery feature ON, false -> OFF (motor runs 0V to full battery)
-  //   calibration : 1.0  -> change it until print() matches your multimeter
-  nova.battery.setup(7.4, 7.0, A7, 13, true, 1.0);
+  // warning voltage 7.4V, low voltage 7.0V, battery pin A7, LED pin 13, feature ON, calibration
+  nova.battery.setup(7.4, 7.0, A7, 13, true, calibration);
 
-  // You can also write only the first two numbers, the rest use default values:
-  // nova.battery.setup(7.4, 7.0);
+  // ----- calibration: type the multimeter reading in the Serial Monitor -----
+  float meter = 0;
+  while (meter < 3 || meter > 9) {
+    Serial.println("Type multimeter battery reading (example 8.00), then press Enter:");
+    while (!Serial.available());
+    meter = Serial.parseFloat();
+    while (Serial.available()) Serial.read();      // clear the Enter key
+  }
 
-  // To test with the battery feature OFF, use false:
-  // nova.battery.setup(7.4, 7.0, A7, 13, false, 1.0);
+  // new calibration = old calibration x (multimeter / shown voltage)
+  calibration = calibration * (meter / nova.battery.voltage());
+  nova.battery.setup(7.4, 7.0, A7, 13, true, calibration);
 
-  // ---------- 2) nova.battery.isOn() ----------
-  Serial.print("Battery feature ON? ");
-  Serial.println(nova.battery.isOn() ? "YES" : "NO");
-
-  stepStart = millis();
+  Serial.print("Calibration = ");
+  Serial.println(calibration, 4);                  // use this number in your own code
 }
 
 void loop() {
-  // ----- change the speed every 5 seconds (no delay, so the battery check keeps running) -----
-  if (millis() - stepStart >= STEP_TIME) {
-    stepStart = millis();
-    step = (step + 1) % 3;               // 0 -> 1 -> 2 -> 0 ...
-    Serial.print("--- New speed: ");
-    Serial.println(speeds[step]);
-  }
+  nova.battery.update();                           // keeps the warning LED flashing
 
-  // Move commands call the battery check by themselves (this is the "background" part)
-  nova.move.FORWARD(speeds[step]);
-
-  // ----- print every 500 ms -----
   if (millis() - lastPrint >= 500) {
     lastPrint = millis();
 
-    // ---------- 3) nova.battery.print() ----------
-    // prints "Battery: 7.85 V" only when you call it
-    nova.battery.print();
+    nova.battery.print();                          // "Battery: 7.85 V"
+    // float v = nova.battery.voltage();           // same voltage, as a number
 
-    // ---------- 4) nova.battery.voltage() ----------
-    // gives the battery voltage as a number
-    float v = nova.battery.voltage();
-
-    // ---------- 5) nova.battery.scale() ----------
-    // lowV / battery voltage: below 1.0 means the code is lowering the motor PWM
-    float s = nova.battery.scale();
-
-    Serial.print("Speed: ");
-    Serial.print(speeds[step]);
-    Serial.print("   Voltage: ");
-    Serial.print(v, 2);
-    Serial.print(" V   Scale: ");
-    Serial.println(s, 3);
+    Serial.print("Scale: ");
+    Serial.print(nova.battery.scale(), 3);         // lowV / battery voltage (max 1.0)
+    Serial.print("   Calibration: ");
+    Serial.println(calibration, 4);
   }
-
-  // ---------- 6) nova.battery.update() ----------
-  // Not needed here because nova.move.FORWARD() already calls it.
-  // Use it only if your loop sometimes does NOT call any nova.move command,
-  // so the warning LED can still flash:
-  // nova.battery.update();
 }
