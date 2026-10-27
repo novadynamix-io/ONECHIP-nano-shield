@@ -24,6 +24,10 @@
 #define ONS_R_IN1   10
 #define ONS_R_IN2   9
 
+// ===== BATTERY MONITOR =====
+#define ONS_BAT_PIN      A7     // analog pin that reads the battery (default)
+#define ONS_BAT_DIVIDER  2.0    // 10k + 10k voltage divider (halves the voltage)
+
 /* ===== LED CLASS ===== */
 class LED {
   public:
@@ -44,12 +48,53 @@ class BTN{
     uint8_t _pin;
 };
 
+/* ===== BATTERY CLASS ===== */
+class Battery {
+  public:
+    Battery();
+
+    // warningV    : LED flashes normally at or below this voltage
+    // lowV        : LED flashes fast at or below this voltage
+    //               also 100% motor speed = this voltage (motor runs 0V to lowV)
+    // batPin      : analog pin that reads the battery
+    // ledPin      : LED pin used for the warning
+    // enabled     : true = battery feature ON, false = OFF (motor runs 0V to full battery)
+    // calibration : multiply the reading to match your multimeter
+    void setup(float warningV = 7.4, float lowV = 7.0,
+               uint8_t batPin = ONS_BAT_PIN, uint8_t ledPin = ONS_LED2,
+               bool enabled = true, float calibration = 1.0);
+
+    void update();        // reads battery + flashes LED (Move calls this by itself)
+    float voltage();      // battery voltage in V
+    void print();         // prints the voltage to Serial (only when you call it)
+    bool isOn();          // is the battery feature ON?
+    float scale();        // lowV / battery voltage (0 to 1), used by Move
+
+  private:
+    float readRaw();
+
+    float _warningV;
+    float _lowV;
+    uint8_t _batPin;
+    uint8_t _ledPin;
+    float _calibration;
+    bool _enabled;
+
+    float _batteryV;
+    unsigned long _lastRead;
+    unsigned long _lastBlink;
+    bool _ledState;
+    bool _blinking;
+};
+
 /* ===== MOTOR CLASS ===== */
 class Move {
   public:
     Move();
 
     void begin();
+
+    void attachBattery(Battery* b);   // used by the board class, you don't call this
 
     void FORWARD(uint8_t speed);
     void BACKWARD(uint8_t speed);
@@ -68,6 +113,8 @@ class Move {
     uint8_t speedToPWM(uint8_t s);
     void setLeft(int speed);
     void setRight(int speed);
+
+    Battery* _battery;
 };
 
 
@@ -134,6 +181,7 @@ class OnechipNanoShield {
     BTN btn2;
 
     Move move;
+    Battery battery;
 
     Ultrasonic ultrasonic;
     IR_TSOP ir;
